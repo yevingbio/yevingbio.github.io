@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yeving - Interactive Bio</title>
+    <!-- Import Google Font for a better terminal feel -->
+    <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;700&display=swap" rel="stylesheet">
+    <!-- No Tailwind CSS link here, as styling is now inline for full control -->
+</head>
+<body class="bg-gray-950 text-gray-100 font-mono flex items-center justify-center min-h-screen p-4">
+
+    <!-- Canvas for falling rain background and lightning -->
+    <canvas id="rainCanvas"></canvas>
+
+    <div id="terminal" class="absolute bg-gray-800 p-0 rounded-lg shadow-2xl w-full max-w-2xl h-[600px] flex flex-col overflow-hidden border border-gray-700">
+        <!-- Terminal Header (Drag Handle) -->
+        <div id="terminal-header" class="flex items-center justify-between bg-gray-700 text-gray-300 px-4 py-2 rounded-t-lg cursor-grab select-none">
+            <div class="flex items-center space-x-2">
+                <!-- Decorative window controls (red, yellow, green circles) -->
+                <div class="w-3 h-3 bg-red-500 rounded-full"></div>
+                <div class="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+            </div>
+            <span class="text-sm">terminal - Yeving@bio</span>
+            <div></div> <!-- Spacer for centering title -->
+        </div>
+
+        <!-- Terminal Output Area -->
+        <div id="output" class="flex-grow overflow-y-auto p-4 pr-2 custom-scrollbar text-sm leading-relaxed">
+            <!-- Initial content will be added by JavaScript -->
+        </div>
+
+        <!-- Terminal Input Area -->
+        <div class="flex items-center p-4 pt-0">
+            <span id="prompt-text" class="text-green-400 font-bold mr-2">Yeving@host:~$&nbsp;</span>
+            <input type="text" id="commandInput" class="bg-transparent border-none outline-none flex-grow text-gray-100 caret-green-400 p-1" autofocus>
+            <!-- Blinking cursor for visual effect -->
+            <span id="cursor" class="text-green-400 animate-blink">_</span>
+        </div>
+    </div>
+
+    <style>
+        /* General body styling */
+        body {
+            background-color: #1a1a1a; /* Solid dark background for canvas to sit on */
+            color: #f8f8f2; /* Light grey for text */
+            font-family: 'Source Code Pro', monospace; /* Professional monospace font */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1rem;
+            overflow: hidden; /* Prevent body scroll when terminal is dragged */
+            position: relative; /* Needed for absolute positioning of canvas and terminal */
+        }
+
+        /* Rain Canvas styling */
+        #rainCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0; /* Ensure it's behind the terminal */
+        }
+
+        /* Terminal container */
+        #terminal {
+            position: absolute; /* Allows dragging */
+            background-color: rgba(40, 42, 54, 0.7); /* Dracula theme background with transparency */
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6), inset 0 0 5px rgba(0, 0, 0, 0.2); /* Softer shadow */
+            width: 90vw;
+            max-width: 720px;
+            height: 80vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid rgba(68, 71, 90, 0.7); /* Subtle border with transparency */
+            z-index: 1; /* Ensure it's above the rain */
+        }
+
+        /* Terminal header (drag handle) */
+        #terminal-header {
+            background-color: rgba(33, 34, 44, 0.9); /* Darker header background with transparency */
+            color: #f8f8f2;
+            padding: 0.75rem 1rem;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            cursor: grab;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.875rem; /* text-sm */
+            user-select: none;
+        }
+
+        #terminal-header:active {
+            cursor: grabbing;
+        }
+
+        /* Window control buttons */
+        .window-btns {
+            display: flex;
+            gap: 0.5rem; /* space-x-2 */
+        }
+
+        .window-btn {
+            width: 0.75rem; /* w-3 */
+            height: 0.75rem; /* h-3 */
+            border-radius: 9999px; /* rounded-full */
+            cursor: default;
+        }
+        .window-btn:nth-child(1) { background-color: #ff5555; } /* Red */
+        .window-btn:nth-child(2) { background-color: #f1fa8c; } /* Yellow */
+        .window-btn:nth-child(3) { background-color: #50fa7b; } /* Green */
+
+        /* Terminal output area */
+        #output {
+            flex-grow: 1;
+            background-color: rgba(40, 42, 54, 0.75); /* Same as terminal body with more transparency */
+            padding: 1rem;
+            padding-right: 0.5rem; /* pr-2 */
+            overflow-y: auto;
+            font-size: 0.875rem; /* text-sm */
+            line-height: 1.6; /* leading-relaxed */
+            white-space: pre-wrap; /* Preserve whitespace and wrap text */
+            user-select: text; /* Allow text selection */
+            cursor: text;
+        }
+
+        /* Custom scrollbar for webkit browsers */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(33, 34, 44, 0.7); /* Darker track with transparency */
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #50fa7b; /* Vibrant green thumb */
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #69ff94; /* Lighter green on hover */
+        }
+
+        /* Terminal input area */
+        #input-line {
+            background-color: rgba(33, 34, 44, 0.9); /* Darker input background with transparency */
+            padding: 1rem;
+            padding-top: 0;
+            display: flex;
+            align-items: center;
+            border-top: 1px solid rgba(68, 71, 90, 0.7); /* Border above input with transparency */
+        }
+
+        #prompt-text {
+            color: #50fa7b; /* Green prompt */
+            font-weight: 700; /* font-bold */
+            margin-right: 0.5rem; /* mr-2 */
+            user-select: none;
+        }
+
+        #commandInput {
+            background: transparent;
+            border: none;
+            color: #f8f8f2; /* Light grey text */
+            font-family: inherit;
+            font-size: 1rem;
+            outline: none;
+            flex-grow: 1; /* flex-grow */
+            padding: 0.25rem; /* p-1 */
+            caret-color: #50fa7b; /* Green blinking cursor */
+        }
+
+        /* Blinking cursor animation */
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+        .animate-blink {
+            animation: blink 1s step-end infinite;
+        }
+
+        /* Hide cursor when input is focused to avoid double cursor */
+        #commandInput:focus + #cursor {
+            display: none;
+        }
+
+        /* Custom text colors for output */
+        .text-green-output { color: #50fa7b; } /* Success/Info */
+        .text-blue-output { color: #8be9fd; } /* Highlight/Links */
+        .text-yellow-output { color: #f1fa8c; } /* Warnings/Help */
+        .text-purple-output { color: #bd93f9; } /* Categories/Titles */
+        .text-red-output { color: #ff5555; } /* Errors */
+        .text-gray-output { color: #f8f8f2; } /* Default text */
+    </style>
+
+    <script>
+        const terminal = document.getElementById('terminal');
+        const terminalHeader = document.getElementById('terminal-header');
+        const commandInput = document.getElementById('commandInput');
+        const outputDiv = document.getElementById('output');
+        const cursorSpan = document.getElementById('cursor');
+
+        let isDragging = false;
+        let offsetX, offsetY;
+
+        // Command history variables
+        let commandHistory = [];
+        let historyIndex = -1;
+
+        // Rain effect variables
+        const canvas = document.getElementById('rainCanvas');
+        const ctx = canvas.getContext('2d');
+        let drops = [];
+        const numDrops = 150; // Number of raindrops
+
+        // Lightning variables
+        let lightningActive = false;
+        let lightningIntensity = 0; // For fade effect
+        const lightningDuration = 150; // ms for the flash
+        const lightningFadeDuration = 500; // ms for fade out after flash
+        let lightningTimer = null;
+        let lightningFadeTimer = null;
+
+        // Function to resize canvas
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            // Reinitialize drops on resize to fit new dimensions
+            drops = [];
+            for (let i = 0; i < numDrops; i++) {
+                drops.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    speed: 2 + Math.random() * 5, // Random speed
+                    length: 10 + Math.random() * 20 // Random length
+                });
+            }
+        }
+
+        // Function to draw a single raindrop
+        function drawDrop(drop) {
+            ctx.beginPath();
+            ctx.moveTo(drop.x, drop.y);
+            ctx.lineTo(drop.x, drop.y + drop.length);
+            ctx.strokeStyle = 'rgba(173, 216, 230, 0.6)'; // Light blue with transparency
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+        // Function to draw lightning
+        function drawLightning() {
+            ctx.strokeStyle = `rgba(255, 255, 255, ${lightningIntensity})`; // White with varying intensity
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+
+            const numBolts = 1 + Math.floor(Math.random() * 2); // 1 to 2 bolts per strike
+
+            for (let b = 0; b < numBolts; b++) {
+                let currentX = Math.random() * canvas.width;
+                let currentY = 0;
+
+                ctx.beginPath();
+                ctx.moveTo(currentX, currentY);
+
+                for (let i = 0; i < 15; i++) { // Number of segments
+                    const segmentLength = 10 + Math.random() * 40;
+                    const offsetX = (Math.random() - 0.5) * 80; // Wider spread
+                    const offsetY = segmentLength;
+
+                    currentX += offsetX;
+                    currentY += offsetY;
+
+                    // Keep lightning within horizontal bounds
+                    if (currentX < 0) currentX = 0;
+                    if (currentX > canvas.width) currentX = canvas.width;
+
+                    ctx.lineTo(currentX, currentY);
+
+                    if (currentY > canvas.height) break; // Stop if off screen
+                }
+                ctx.stroke();
+            }
+
+            // Add a subtle white flash over the whole screen
+            ctx.fillStyle = `rgba(255, 255, 255, ${lightningIntensity * 0.2})`; // Semi-transparent white flash
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Function to start a lightning strike
+        function startLightning() {
+            lightningActive = true;
+            lightningIntensity = 1; // Full intensity at start
+
+            // Fade out lightning
+            if (lightningFadeTimer) clearInterval(lightningFadeTimer);
+            lightningFadeTimer = setInterval(() => {
+                lightningIntensity -= 0.05; // Decrease intensity
+                if (lightningIntensity <= 0) {
+                    lightningIntensity = 0;
+                    lightningActive = false;
+                    clearInterval(lightningFadeTimer);
+                }
+            }, lightningFadeDuration / 20); // Adjust step for smoother fade
+
+            // Schedule next lightning strike
+            scheduleNextLightning();
+        }
+
+        // Function to schedule the next lightning strike
+        function scheduleNextLightning() {
+            const randomDelay = 8000 + Math.random() * 12000; // 8 to 20 seconds
+            if (lightningTimer) clearTimeout(lightningTimer); // Clear any existing timer
+            lightningTimer = setTimeout(startLightning, randomDelay);
+        }
+
+
+        // Animation loop for rain and lightning
+        function animateRain() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+
+            // Draw rain
+            for (let i = 0; i < drops.length; i++) {
+                const drop = drops[i];
+                drawDrop(drop);
+                drop.y += drop.speed; // Make drop fall
+
+                // Reset drop if it goes off screen
+                if (drop.y > canvas.height) {
+                    drop.y = -drop.length; // Start from top
+                    drop.x = Math.random() * canvas.width; // New random x
+                    drop.speed = 2 + Math.random() * 5; // New random speed
+                    drop.length = 10 + Math.random() * 20; // New random length
+                }
+            }
+
+            // Draw lightning if active
+            if (lightningActive) {
+                drawLightning();
+            }
+
+            requestAnimationFrame(animateRain); // Loop
+        }
+
+        // Function to center the terminal initially
+        function centerTerminal() {
+            const terminalWidth = terminal.offsetWidth;
+            const terminalHeight = terminal.offsetHeight;
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+
+            terminal.style.left = ((windowWidth - terminalWidth) / 2) + 'px';
+            terminal.style.top = ((windowHeight - terminalHeight) / 2) + 'px';
+            terminal.style.transform = 'none'; // Remove any previous transform
+        }
+
+        // Center terminal and resize canvas on load and resize
+        window.onload = () => {
+            resizeCanvas();
+            centerTerminal();
+            animateRain(); // Start rain animation
+            scheduleNextLightning(); // Start scheduling lightning
+
+            // Initial welcome message
+            printToOutput('<span class="text-green-output">Type \'help\' to begin.</span>');
+            printToOutput(''); // Empty line for spacing
+            commandInput.focus(); // Ensure input is focused on load
+        };
+        window.onresize = () => {
+            resizeCanvas();
+            centerTerminal();
+        };
+
+        // Dragging functionality
+        terminalHeader.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            terminalHeader.style.cursor = 'grabbing';
+            // Calculate offset from mouse to element's top-left corner
+            offsetX = e.clientX - terminal.getBoundingClientRect().left;
+            offsetY = e.clientY - terminal.getBoundingClientRect().top;
+            // Prevent text selection during drag
+            e.preventDefault();
+            // Bring terminal to front if multiple draggable elements exist
+            terminal.style.zIndex = 1000;
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+
+            // Calculate new position
+            let newX = e.clientX - offsetX;
+            let newY = e.clientY - offsetY;
+
+            // Keep terminal within viewport boundaries with a small margin
+            const terminalWidth = terminal.offsetWidth;
+            const terminalHeight = terminal.offsetHeight;
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+            const margin = 10;
+
+            if (newX < margin) newX = margin;
+            if (newY < margin) newY = margin;
+            if (newX + terminalWidth > windowWidth - margin) newX = windowWidth - terminalWidth - margin;
+            if (newY + terminalHeight > windowHeight - margin) newY = windowHeight - terminalHeight - margin;
+
+            terminal.style.left = newX + 'px';
+            terminal.style.top = newY + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            terminalHeader.style.cursor = 'grab';
+            terminal.style.zIndex = 'auto'; // Reset z-index
+        });
+
+
+        // Your bio data - Change these values to your own!
+        const userInfo = {
+            name: "Yeving", // Updated name
+            title: "Digital Explorer & Tech Enthusiast", // Zmieniono na bardziej pasujące do "skidowania"
+            about: "I'm a skid <3", // Zmieniono na "I'm a skid <3"
+            contact: {
+                github: "https://github.com/yevingbio", // Zmieniono link GitHub
+                discord: "yeving000" // Dodano Discord
+            }
+        };
+
+        // Command definitions and their responses
+        const commands = {
+            help: `
+                <span class="text-yellow-output">Available commands:</span>
+                <span class="text-blue-output">about</span>    - Learn more about me.
+                <span class="text-blue-output">contact</span>  - Find out how to reach me.
+                <span class="text-blue-output">skid</span>     - What does 'skid' mean to me?
+                <span class="text-blue-output">clear</span>    - Clear the terminal screen.
+                <span class="text-blue-output">help</span>     - Display this help message.
+            `,
+            about: `
+                <span class="text-gray-output">${userInfo.about}</span>
+            `,
+            contact: `
+                <span class="text-purple-output">Contact Me:</span>
+                <span class="text-gray-output">GitHub:</span> <a href="${userInfo.contact.github}" target="_blank" class="text-blue-output hover:underline">${userInfo.contact.github}</a>
+                <span class="text-gray-output">Discord:</span> <span class="text-blue-output">${userInfo.contact.discord}</span>
+            `,
+            skid: `
+                <span class="text-purple-output">What 'skid' means to Yeving:</span>
+                <span class="text-gray-output">For me, 'skid' is about pure curiosity and hands-on exploration. It's diving into existing codebases, playing with new tools, and seeing how things tick. It's less about mastery and more about the joy of discovery, learning by doing, and sometimes, playfully breaking things to understand them better. It's a continuous adventure in the digital realm!</span>
+            `,
+            clear: '' // 'clear' command is handled directly in the logic
+        };
+
+        // Function to print lines to the output div
+        function printToOutput(text, className = '') {
+            const p = document.createElement('p');
+            p.innerHTML = text;
+            if (className) {
+                p.classList.add(className);
+            }
+            outputDiv.appendChild(p);
+            outputDiv.scrollTop = outputDiv.scrollHeight; // Scroll to bottom
+        }
+
+        // Event listener for Enter key press in the input field
+        commandInput.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                const command = commandInput.value.trim();
+                commandInput.value = ''; // Clear the input field after pressing Enter
+
+                // Add command to history
+                if (command !== '') {
+                    commandHistory.push(command);
+                    historyIndex = commandHistory.length; // Reset history index to end
+                }
+
+                // Display user's command
+                printToOutput(`<span class="text-green-output font-bold">Yeving@host:~$&nbsp;</span> ${command}`);
+
+                // Handle command
+                switch (command.toLowerCase()) { // Use toLowerCase for command matching
+                    case 'help':
+                        printToOutput(commands.help);
+                        break;
+                    case 'about':
+                        printToOutput(commands.about);
+                        break;
+                    case 'contact':
+                        printToOutput(commands.contact);
+                        break;
+                    case 'skid': // New command case
+                        printToOutput(commands.skid);
+                        break;
+                    case 'clear':
+                        outputDiv.innerHTML = ''; // Clear the entire output area
+                        printToOutput('<span class="text-green-output">Type \'help\' to begin.</span>'); // Re-add initial message
+                        printToOutput(''); // Empty line for spacing
+                        break;
+                    case '':
+                        // Do nothing for empty command
+                        break;
+                    default:
+                        printToOutput(`<span class="text-red-output">Error:</span> Command not found: '${command}'. Type 'help' for a list of commands.`);
+                        break;
+                }
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault(); // Prevent cursor from moving to start of input
+                if (historyIndex > 0) {
+                    historyIndex--;
+                    commandInput.value = commandHistory[historyIndex];
+                } else if (historyIndex === 0) {
+                    commandInput.value = commandHistory[0];
+                }
+            } else if (event.key === 'ArrowDown') {
+                event.preventDefault(); // Prevent cursor from moving to end of input
+                if (historyIndex < commandHistory.length - 1) {
+                    historyIndex++;
+                    commandInput.value = commandHistory[historyIndex];
+                } else {
+                    commandInput.value = ''; // Clear input if at the end of history
+                    historyIndex = commandHistory.length;
+                }
+            }
+        });
+
+        // Focus on the input field when clicking anywhere on the terminal
+        document.getElementById('terminal').addEventListener('click', () => {
+            commandInput.focus();
+        });
+
+        // Handle cursor visibility based on input focus
+        commandInput.addEventListener('focus', () => {
+            cursorSpan.style.display = 'none';
+        });
+
+        commandInput.addEventListener('blur', () => {
+            if (commandInput.value.trim() === '') {
+                cursorSpan.style.display = 'inline';
+            }
+        });
+
+        // Initial focus for a better user experience
+        commandInput.focus();
+    </script>
+</body>
+</html>
